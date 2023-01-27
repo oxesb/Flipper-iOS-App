@@ -6,6 +6,7 @@ struct DeviceUpdateView: View {
     var title: String {
         switch viewModel.state {
         case .noInternet, .noCard: return "Update Not Started"
+        case .outdatedAppVersion: return "Unable to Update"
         case .noDevice: return "Update Failed"
         default: return "Updating your Flipper"
         }
@@ -15,10 +16,15 @@ struct DeviceUpdateView: View {
         switch viewModel.state {
         case .noCard:
             return "FlipperNoCard"
-        case .noInternet, .noDevice:
+        case .noInternet, .noDevice, .outdatedAppVersion:
             switch viewModel.deviceColor {
             case .black: return "FlipperDeadBlack"
             default: return "FlipperDeadWhite"
+            }
+        case .storageError:
+            switch viewModel.deviceColor {
+            case .black: return "FlipperFlashIssueBlack"
+            default: return "FlipperFlashIssueWhite"
             }
         default:
             switch viewModel.deviceColor {
@@ -42,14 +48,18 @@ struct DeviceUpdateView: View {
             switch viewModel.state {
             case .noInternet: NoInternetView(viewModel: viewModel)
             case .noDevice: NoDeviceView(viewModel: viewModel)
+            case .storageError: StorageErrorView(viewModel: viewModel)
+            case .outdatedAppVersion: OutdatedAppView(viewModel: viewModel)
             default: UpdateProgressView(viewModel: viewModel)
             }
 
             Spacer()
             Button {
-                viewModel.confirmCancel()
+                viewModel.isUpdating
+                    ? viewModel.confirmCancel()
+                    : viewModel.close()
             } label: {
-                Text("Cancel")
+                Text(viewModel.isUpdating ? "Cancel" : "Close")
                     .font(.system(size: 16, weight: .medium))
             }
             .padding(.bottom, 8)

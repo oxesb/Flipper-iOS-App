@@ -3,6 +3,7 @@ import SwiftUI
 
 struct StressTestView: View {
     @StateObject var viewModel: StressTestViewModel
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack {
@@ -20,15 +21,33 @@ struct StressTestView: View {
 
             HStack {
                 Spacer()
-                RoundedButton("Start", action: viewModel.start)
+                Button {
+                    viewModel.start()
+                } label: {
+                    Text("Start")
+                        .roundedButtonStyle(maxWidth: .infinity)
+                }
                 Spacer()
-                RoundedButton("Stop", action: viewModel.stop)
+                Button {
+                    viewModel.stop()
+                } label: {
+                    Text("Stop")
+                        .roundedButtonStyle(maxWidth: .infinity)
+                }
                 Spacer()
             }
             .padding(.vertical, 20)
         }
-        .navigationTitle("Stress Test")
+        .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            LeadingToolbarItems {
+                BackButton {
+                    dismiss()
+                }
+                Title("Stress Test")
+            }
+        }
         .onDisappear {
             viewModel.stop()
         }

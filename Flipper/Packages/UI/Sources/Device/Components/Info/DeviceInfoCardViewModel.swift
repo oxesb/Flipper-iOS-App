@@ -7,7 +7,7 @@ import SwiftUI
 
 @MainActor
 class DeviceInfoCardViewModel: ObservableObject {
-    private let appState: AppState = .shared
+    @Inject private var appState: AppState
     private var disposeBag: DisposeBag = .init()
 
     @Published var device: Flipper?
@@ -68,15 +68,29 @@ class DeviceInfoCardViewModel: ObservableObject {
         return .init(build)
     }
 
-    var internalSpace: String {
-        guard isConnected else { return "" }
-        return device?.storage?.internal?.description ?? ""
+    var internalSpace: AttributedString {
+        guard isConnected, let int = device?.storage?.internal else {
+            return ""
+        }
+        var result = AttributedString(int.description)
+        if int.free < 20_000 {
+            result.foregroundColor = .sRed
+        }
+        return result
     }
 
-    var externalSpace: String {
-        guard isConnected else { return "" }
-        guard device?.storage?.internal != nil else { return "" }
-        return device?.storage?.external?.description ?? "—"
+    var externalSpace: AttributedString {
+        guard isConnected, device?.storage?.internal != nil else {
+            return ""
+        }
+        guard let ext = device?.storage?.external else {
+            return "—"
+        }
+        var result = AttributedString(ext.description)
+        if ext.free < 100_000 {
+            result.foregroundColor = .sRed
+        }
+        return result
     }
 
     init() {

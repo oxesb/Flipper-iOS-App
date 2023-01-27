@@ -6,39 +6,50 @@ import Combine
 import Logging
 
 public class AppState {
-    public static let shared: AppState = .init()
     private let logger = Logger(label: "appstate")
 
-    @Published public var isFirstLaunch: Bool {
-        didSet { UserDefaultsStorage.shared.isFirstLaunch = isFirstLaunch }
-    }
-
     @Inject private var rpc: RPC
+    @Inject private var archive: Archive
     @Inject private var analytics: Analytics
     @Inject private var pairedDevice: PairedDevice
     private var disposeBag: DisposeBag = .init()
 
+    public var firstLaunch: FirstLaunch { .shared }
+
     @Published public var flipper: Flipper? {
         didSet { onFlipperChanged(oldValue) }
     }
-    @Published public var archive: Archive = .shared
     @Published public var status: DeviceStatus = .noDevice
     @Published public var syncProgress: Int = 0
 
-    @Published public var importQueue: [ArchiveItem] = []
+    @Published public var importQueue: [URL] = []
     @Published public var customFirmwareURL: URL?
+
+    @Published public var hasMFLog = false
+    @Published public var showWidgetSettings = false
 
     public init() {
         logger.info("app version: \(Bundle.fullVersion)")
         logger.info("log level: \(UserDefaultsStorage.shared.logLevel)")
-
-        isFirstLaunch = UserDefaultsStorage.shared.isFirstLaunch
 
         pairedDevice.flipper
             .receive(on: DispatchQueue.main)
             .assign(to: \.flipper, on: self)
             .store(in: &disposeBag)
     }
+
+    // MARK: Welcome Screen
+
+    public func pairDevice() {
+        firstLaunch.showWelcomeScreen()
+    }
+
+    public func skipPairing() {
+        forgetDevice()
+        firstLaunch.hideWelcomeScreen()
+    }
+
+    // MARK: Device Events
 
     func onFlipperChanged(_ oldValue: Flipper?) {
         updateState(oldValue?.state)
@@ -132,17 +143,6 @@ public class AppState {
         return true
     }
 
-    var reconnectOnDisconnect = true
-
-    func didDisconnect() {
-        logger.info("disconnected")
-        guard reconnectOnDisconnect else {
-            return
-        }
-        logger.debug("reconnecting")
-        connect()
-    }
-
     // MARK: Connection
 
     public func connect() {
@@ -159,15 +159,40 @@ public class AppState {
         pairedDevice.forget()
     }
 
+    // MARK: Disconnect event
+
+    var reconnectOnDisconnect = true
+
+    func didDisconnect() {
+        logger.info("disconnected")
+        guard reconnectOnDisconnect else {
+            return
+        }
+        logger.debug("reconnecting")
+        connect()
+    }
+
     // MARK: Synchronization
 
     public func synchronize() async throws {
+        try await checkMFLogFile()
+        try await syncronizeArchive()
+    }
+
+    private func checkMFLogFile() async throws {
+        guard status == .connected else { return }
+        hasMFLog = try await rpc.fileExists(at: .mfKey32Log)
+    }
+
+    private func syncronizeArchive() async throws {
         guard flipper?.state == .connected else { return }
         guard status != .unsupportedDevice else { return }
         guard status != .synchronizing else { return }
         status = .synchronizing
         let time = try await measure {
             try await archive.synchronize { progress in
+                // FIXME: find the issue (very rare)
+                guard progress.isNormal else { return }
                 self.syncProgress = Int(progress * 100)
             }
         }
@@ -211,6 +236,10 @@ public class AppState {
 
     public func onOpenURL(_ url: URL) async {
         do {
+            guard url != .widgetSettings else {
+                showWidgetSettings = true
+                return
+            }
             switch url.pathExtension {
             case "tgz": try await onOpenUpdateBundle(url)
             default: try await onOpenKeyURL(url)
@@ -225,8 +254,7 @@ public class AppState {
     }
 
     private func onOpenKeyURL(_ url: URL) async throws {
-        let item = try await Sharing.importKey(from: url)
-        importQueue = [item]
+        importQueue = [url]
         logger.info("key url opened")
     }
 
@@ -288,7 +316,7 @@ public class AppState {
 
     func reportGATTInfo() {
         analytics.flipperGATTInfo(
-            flipperVersion: flipper?.information?.softwareRevision ?? "ukwnown")
+            flipperVersion: flipper?.information?.softwareRevision ?? "unknown")
     }
 
     func reportRPCInfo() {
@@ -303,11 +331,11 @@ public class AppState {
 
     func reportSynchronizationResult(time: Int) {
         analytics.syncronizationResult(
-            subGHzCount: archive.items.count { $0.fileType == .subghz },
-            rfidCount: archive.items.count { $0.fileType == .rfid },
-            nfcCount: archive.items.count { $0.fileType == .nfc },
-            infraredCount: archive.items.count { $0.fileType == .infrared },
-            iButtonCount: archive.items.count { $0.fileType == .ibutton },
+            subGHzCount: archive._items.value.count { $0.kind == .subghz },
+            rfidCount: archive._items.value.count { $0.kind == .rfid },
+            nfcCount: archive._items.value.count { $0.kind == .nfc },
+            infraredCount: archive._items.value.count { $0.kind == .infrared },
+            iButtonCount: archive._items.value.count { $0.kind == .ibutton },
             synchronizationTime: time)
     }
 }

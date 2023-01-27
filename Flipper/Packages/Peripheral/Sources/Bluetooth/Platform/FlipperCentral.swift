@@ -38,7 +38,7 @@ class FlipperCentral: NSObject, BluetoothCentral, BluetoothConnector {
     var discovered: SafePublisher<[BluetoothPeripheral]> {
         _discovered.eraseToAnyPublisher()
     }
-    let _discovered: SafeValueSubject<[BluetoothPeripheral]> =  {
+    let _discovered: SafeValueSubject<[BluetoothPeripheral]> = {
         .init([])
     }()
 
@@ -145,8 +145,6 @@ extension FlipperCentral {
     ) {
         didConnect(peripheral)
     }
-
-    // FIXME: Not triggered anymore for some reason
 
     func centralManager(
         _ central: CBCentralManager,

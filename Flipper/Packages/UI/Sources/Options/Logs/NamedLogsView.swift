@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NamedLogsView: View {
     @StateObject var viewModel: NamedLogsViewModel
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         List {
@@ -9,18 +10,20 @@ struct NamedLogsView: View {
                 Text(message)
             }
         }
-        .navigationTitle(viewModel.name)
+        .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    viewModel.share()
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
+            LeadingToolbarItems {
+                BackButton {
+                    dismiss()
                 }
-                .foregroundColor(.primary)
+                Title(viewModel.name)
+            }
+            TrailingToolbarItems {
+                ShareButton {
+                    viewModel.share()
+                }
             }
         }
-        .navigationTitle(viewModel.name)
     }
 }

@@ -1,18 +1,30 @@
 import Core
-import Combine
 import Inject
+import Combine
+import Logging
 import SwiftUI
 import OrderedCollections
 
 @MainActor
 class ArchiveViewModel: ObservableObject {
-    @Environment(\.dismiss) var dismiss
-    let appState: AppState = .shared
+    private let logger = Logger(label: "archive-vm")
+
+    @Environment(\.dismiss) private var dismiss
+    @Inject private var appState: AppState
+    @Inject private var archive: Archive
+    private var disposeBag: DisposeBag = .init()
+
+    let pullToRefreshThreshold: Double = 1000
 
     @Published var items: [ArchiveItem] = []
     @Published var deleted: [ArchiveItem] = []
     @Published var status: DeviceStatus = .noDevice
     @Published var syncProgress: Int = 0
+
+    var canPullToRefresh: Bool {
+        status == .connected ||
+        status == .synchronized
+    }
 
     var sortedItems: [ArchiveItem] {
         items.sorted { $0.date < $1.date }
@@ -22,35 +34,39 @@ class ArchiveViewModel: ObservableObject {
         sortedItems.filter { $0.isFavorite }
     }
 
-    var selectedItem: ArchiveItem?
+    var selectedItem: ArchiveItem = .none
     @Published var showInfoView = false
     @Published var showSearchView = false
     @Published var hasImportedItem = false
+    @Published var showWidgetSettings = false {
+        didSet {
+            if appState.showWidgetSettings != showWidgetSettings {
+                appState.showWidgetSettings = showWidgetSettings
+            }
+        }
+    }
 
-    var importedItem: ArchiveItem? {
+    var importedItem: URL {
         appState.importQueue.removeFirst()
     }
 
-    var archive: Archive { appState.archive }
-    var disposeBag: DisposeBag = .init()
-
-    var groups: OrderedDictionary<ArchiveItem.FileType, Int> {
+    var groups: OrderedDictionary<ArchiveItem.Kind, Int> {
         [
-            .subghz: items.filter { $0.fileType == .subghz }.count,
-            .rfid: items.filter { $0.fileType == .rfid }.count,
-            .nfc: items.filter { $0.fileType == .nfc }.count,
-            .infrared: items.filter { $0.fileType == .infrared }.count,
-            .ibutton: items.filter { $0.fileType == .ibutton }.count
+            .subghz: items.filter { $0.kind == .subghz }.count,
+            .rfid: items.filter { $0.kind == .rfid }.count,
+            .nfc: items.filter { $0.kind == .nfc }.count,
+            .infrared: items.filter { $0.kind == .infrared }.count,
+            .ibutton: items.filter { $0.kind == .ibutton }.count
         ]
     }
 
     init() {
-        archive.$items
+        archive.items
             .receive(on: DispatchQueue.main)
             .assign(to: \.items, on: self)
             .store(in: &disposeBag)
 
-        archive.$deletedItems
+        archive.deletedItems
             .receive(on: DispatchQueue.main)
             .assign(to: \.deleted, on: self)
             .store(in: &disposeBag)
@@ -71,10 +87,25 @@ class ArchiveViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .assign(to: \.syncProgress, on: self)
             .store(in: &disposeBag)
+
+        appState.$showWidgetSettings
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.showWidgetSettings, on: self)
+            .store(in: &disposeBag)
     }
 
     func onItemSelected(item: ArchiveItem) {
         selectedItem = item
         showInfoView = true
+    }
+
+    func refresh() {
+        Task {
+            do {
+                try await appState.synchronize()
+            } catch {
+                logger.error("pull to refresh: \(error)")
+            }
+        }
     }
 }

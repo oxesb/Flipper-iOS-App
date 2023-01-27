@@ -9,14 +9,16 @@ import Logging
 class DeviceUpdateViewModel: ObservableObject {
     private let logger = Logger(label: "update-vm")
 
-    private let appState: AppState = .shared
+    @Inject private var appState: AppState
     private var disposeBag: DisposeBag = .init()
 
-    @Inject var rpc: RPC
+    @Inject private var rpc: RPC
 
     @Binding var isPresented: Bool
     @Published var deviceStatus: DeviceStatus = .noDevice
     @Published var showCancelUpdate = false
+
+    @AppStorage(.isProvisioningDisabled) var isProvisioningDisabled = false
 
     var deviceColor: FlipperColor {
         appState.flipper?.color ?? .white
@@ -26,12 +28,14 @@ class DeviceUpdateViewModel: ObservableObject {
 
     enum State {
         case downloadingFirmware
-        case prepearingForUpdate
+        case preparingForUpdate
         case uploadingFirmware
         case canceling
         case noInternet
         case noDevice
         case noCard
+        case storageError
+        case outdatedAppVersion
     }
 
     let channel: Update.Channel
@@ -42,7 +46,7 @@ class DeviceUpdateViewModel: ObservableObject {
     enum UpdateError {
         case canceled
         case failedDownloading
-        case failedPrepearing
+        case failedPreparing
         case failedUploading
     }
 
@@ -50,21 +54,23 @@ class DeviceUpdateViewModel: ObservableObject {
         guard let firmware = firmware else { return "" }
         switch channel {
         case .development: return "Dev \(firmware.version)"
-        case .canditate: return "RC \(firmware.version.dropLast(3))"
+        case .candidate: return "RC \(firmware.version.dropLast(3))"
         case .release: return "Release \(firmware.version)"
         case .custom(let url): return "Custom \(url.lastPathComponent)"
         }
     }
 
-    var changelog: String {
-        guard let firmware = firmware else { return "" }
-        return firmware.changelog
-    }
+    lazy var changelog: String = {
+        return (firmware?.changelog ?? "")
+            .replacingPullRequestURLs
+            .replacingCompareURLs
+            .replacingURLs
+    }()
 
     var availableFirmwareColor: Color {
         switch channel {
         case .development: return .development
-        case .canditate: return .candidate
+        case .candidate: return .candidate
         case .release: return .release
         case .custom: return .custom
         }
@@ -72,6 +78,15 @@ class DeviceUpdateViewModel: ObservableObject {
 
     @Published var state: State = .downloadingFirmware
     @Published var progress: Double = 0
+
+    var isUpdating: Bool {
+        switch state {
+        case .downloadingFirmware, .preparingForUpdate, .uploadingFirmware:
+            return true
+        default:
+            return false
+        }
+    }
 
     init(
         isPresented: Binding<Bool>,
@@ -114,6 +129,15 @@ class DeviceUpdateViewModel: ObservableObject {
                 logger.error("no internet")
                 onFailure(.failedDownloading)
                 self.state = .noInternet
+            } catch where error is Provisioning.Error {
+                logger.error("provisioning: \(error)")
+                onFailure(.failedPreparing)
+                self.state = .outdatedAppVersion
+            } catch let error as Peripheral.Error
+                where error == .storage(.internal) {
+                logger.error("update: \(error)")
+                onFailure(.failedUploading)
+                self.state = .storageError
             } catch {
                 logger.error("update: \(error)")
                 onFailure(.failedUploading)
@@ -137,29 +161,47 @@ class DeviceUpdateViewModel: ObservableObject {
         }
     }
 
+    var hardwareRegion: Int? {
+        get async throws {
+            let info = try await rpc.deviceInfo()
+            return Int(info["hardware_region"] ?? "")
+        }
+    }
+
+    var canDisableProvisioning: Bool {
+        get async {
+            (try? await hardwareRegion) == 0
+        }
+    }
+
+    var shouldProvideRegion: Bool {
+        get async throws {
+            if isProvisioningDisabled, await canDisableProvisioning {
+                return false
+            } else {
+                return true
+            }
+        }
+    }
+
     func provideSubGHzRegion() async throws {
-        state = .prepearingForUpdate
-        let info = try await rpc.deviceInfo()
-        guard
-            let regionString = info["hardware_region"],
-            let region = Int(regionString),
-            region > 0
-        else {
+        state = .preparingForUpdate
+        guard try await shouldProvideRegion else {
             return
         }
         try await rpc.writeFile(
-            at: Path(string: Provisioning.location),
-            bytes: Provisioning.generate())
+            at: Provisioning.location,
+            bytes: Provisioning().provideRegion().encode())
     }
 
     func uploadFirmware(
         _ firmware: Update.Firmware
     ) async throws -> Peripheral.Path {
-        state = .prepearingForUpdate
+        state = .preparingForUpdate
         progress = 0
         return try await updater.uploadFirmware(firmware) { progress in
             DispatchQueue.main.async {
-                if self.state == .prepearingForUpdate {
+                if self.state == .preparingForUpdate {
                     self.state = .uploadingFirmware
                 }
                 self.progress = progress
@@ -183,12 +225,44 @@ class DeviceUpdateViewModel: ObservableObject {
         appState.disconnect()
         appState.connect()
         onFailure(.canceled)
+        close()
+    }
+
+    func close() {
         isPresented = false
     }
 
     func readMore() {
-        if let url = URL(string: "https://docs.flipperzero.one/basics/reboot") {
-            UIApplication.shared.open(url)
-        }
+        UIApplication.shared.open(.helpToReboot)
+    }
+
+    func howToFactoryReset() {
+        UIApplication.shared.open(.helpToFactoryReset)
+    }
+}
+
+private extension String {
+
+    // (^| ) - is simple guard against matching valid markdown link
+
+    var replacingPullRequestURLs: String {
+        replacingOccurrences(
+            of: #"(^| )(https://github.com/[^\s]+/pull/([0-9]+))"#,
+            with: "$1[#$3]($2)",
+            options: [.regularExpression])
+    }
+
+    var replacingCompareURLs: String {
+        replacingOccurrences(
+            of: #"(^| )(https://github.com/[^\s]+/compare/([^\s]+))"#,
+            with: "$1[$3]($2)",
+            options: [.regularExpression])
+    }
+
+    var replacingURLs: String {
+        replacingOccurrences(
+            of: #"(^| )(https://[^\s]+)"#,
+            with: "$1[$2]($2)",
+            options: [.regularExpression])
     }
 }

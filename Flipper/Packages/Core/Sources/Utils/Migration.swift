@@ -1,17 +1,65 @@
 import Foundation
 
 public func migration() {
+    // check if version is changed
     guard UserDefaults.lastVersion != Bundle.fullVersion else {
         return
     }
 
-    if UserDefaults.lastVersion == "()" {
-        UserDefaultsStorage.shared.reset()
-        try? FileStorage().reset()
+    defer {
+        UserDefaults.lastRelease = Bundle.releaseVersion
+        UserDefaults.lastBuild = Bundle.buildVersion
     }
 
-    UserDefaults.lastRelease = Bundle.releaseVersion
-    UserDefaults.lastBuild = Bundle.buildVersion
+    // guard pre-migration apps
+    guard UserDefaults.lastVersion != "()" else {
+        resetStorage()
+        return
+    }
+    guard // ignore developer build
+        let previousBuild = Int(UserDefaults.lastBuild), previousBuild > 0,
+        let currentBuild = Int(Bundle.buildVersion), currentBuild > 0
+    else {
+        return
+    }
+
+    // reset storage on downgrade
+    guard currentBuild > previousBuild else {
+        resetStorage()
+        return
+    }
+
+    // migrate storage to group
+    if previousBuild <= 127 {
+        try? migrateStorage()
+    }
+}
+
+private func resetStorage() {
+    UserDefaultsStorage.shared.reset()
+    try? FileStorage().reset()
+}
+
+func migrateStorage() throws {
+    let oldBaseURL = FileManager.default.urls(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask)[0]
+
+    guard let newBaseURL = FileManager.default.containerURL(
+        forSecurityApplicationGroupIdentifier: .appGroup
+    ) else {
+        return
+    }
+
+    let contents = try FileManager
+        .default
+        .contentsOfDirectory(atPath: oldBaseURL.path)
+
+    for path in contents {
+        let old = oldBaseURL.appendingPathComponent(path)
+        let new = newBaseURL.appendingPathComponent(path)
+        try FileManager.default.moveItem(at: old, to: new)
+    }
 }
 
 extension UserDefaults {

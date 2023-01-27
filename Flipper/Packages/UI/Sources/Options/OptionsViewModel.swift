@@ -3,18 +3,24 @@ import Inject
 import Combine
 import Peripheral
 import Foundation
+import SwiftUI
 import Logging
 
 @MainActor
 class OptionsViewModel: ObservableObject {
     private let logger = Logger(label: "options-vm")
 
-    @Inject var rpc: RPC
-    private let appState: AppState = .shared
+    @Inject private var rpc: RPC
+    @Inject private var appState: AppState
+    @Inject private var archive: Archive
     private var disposeBag: DisposeBag = .init()
 
-    @Published var isOnline = false
+    @Published var isAvailable = false
     @Published var hasKeys = false
+    @Published var showResetApp = false
+
+    @AppStorage(.isDebugMode) var isDebugMode = false
+    @AppStorage(.isProvisioningDisabled) var isProvisioningDisabled = false
 
     var appVersion: String {
         Bundle.releaseVersion
@@ -23,15 +29,19 @@ class OptionsViewModel: ObservableObject {
     init() {
         appState.$status
             .receive(on: DispatchQueue.main)
-            .map(\.isOnline)
-            .assign(to: \.isOnline, on: self)
+            .map(\.isAvailable)
+            .assign(to: \.isAvailable, on: self)
             .store(in: &disposeBag)
 
-        appState.archive.$items
+        archive.items
             .receive(on: DispatchQueue.main)
             .map { !$0.isEmpty }
             .assign(to: \.hasKeys, on: self)
             .store(in: &disposeBag)
+    }
+
+    func showWidgetSettings() {
+        appState.showWidgetSettings = true
     }
 
     func rebootFlipper() {
@@ -49,6 +59,16 @@ class OptionsViewModel: ObservableObject {
     }
 
     func backupKeys() {
-        appState.archive.backupKeys()
+        archive.backupKeys()
+    }
+
+    var versionTapCount = 0
+
+    func onVersionTapGesture() {
+        versionTapCount += 1
+        if versionTapCount == 10 {
+            isDebugMode = true
+            versionTapCount = 0
+        }
     }
 }

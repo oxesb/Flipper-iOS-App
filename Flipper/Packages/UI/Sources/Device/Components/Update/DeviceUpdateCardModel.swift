@@ -12,9 +12,9 @@ import Logging
 class DeviceUpdateCardModel: ObservableObject {
     private let logger = Logger(label: "update-vm")
 
-    @Inject var rpc: RPC
+    @Inject private var rpc: RPC
     @Inject var analytics: Analytics
-    private let appState: AppState = .shared
+    @Inject private var appState: AppState
     private var disposeBag: DisposeBag = .init()
 
     @Published var state: State = .disconnected
@@ -34,7 +34,7 @@ class DeviceUpdateCardModel: ObservableObject {
     @Published var showConfirmUpdate = false
     @Published var showUpdateView = false
     @Published var showUpdateFailed = false
-    @Published var showUpdateSuccessed = false
+    @Published var showUpdateSucceeded = false
     @Published var showPauseSync = false
     @Published var showCharge = false
 
@@ -55,7 +55,7 @@ class DeviceUpdateCardModel: ObservableObject {
     var channelColor: Color {
         switch channel {
         case .development: return .development
-        case .canditate: return .candidate
+        case .candidate: return .candidate
         case .release: return .release
         case .custom: return .custom
         }
@@ -69,6 +69,8 @@ class DeviceUpdateCardModel: ObservableObject {
     }
 
     var hasManifest: LazyResult<Bool, Swift.Error> = .idle
+    var currentRegion: LazyResult<ISOCode, Swift.Error> = .idle
+    var provisionedRegion: LazyResult<ISOCode, Swift.Error> = .idle
 
     var hasSDCard: LazyResult<Bool, Swift.Error> {
         guard let storage = flipper?.storage else { return .working }
@@ -109,6 +111,8 @@ class DeviceUpdateCardModel: ObservableObject {
 
         if oldValue?.state != .connected {
             verifyManifest()
+            verifyRegionData()
+            detectCurrentRegion()
         }
 
         verifyUpdateResult()
@@ -116,6 +120,8 @@ class DeviceUpdateCardModel: ObservableObject {
 
     func resetState() {
         hasManifest = .idle
+        currentRegion = .idle
+        provisionedRegion = .idle
     }
 
     func verifyManifest() {
@@ -123,11 +129,40 @@ class DeviceUpdateCardModel: ObservableObject {
         hasManifest = .working
         Task {
             do {
-                _ = try await rpc.getSize(at: "/ext/Manifest")
+                _ = try await rpc.getSize(at: .manifest)
                 hasManifest = .success(true)
             } catch {
-                logger.error("manifest doesn't exist: \(error)")
+                logger.error("verify manifest: \(error)")
                 hasManifest = .success(false)
+            }
+        }
+    }
+
+    func verifyRegionData() {
+        guard case .idle = provisionedRegion else { return }
+        provisionedRegion = .working
+        Task {
+            do {
+                let bytes = try await rpc.readFile(at: Provisioning.location)
+                let region = try Provisioning.Region(decoding: bytes)
+                provisionedRegion = .success(region.code)
+            } catch {
+                logger.error("verify region: \(error)")
+                provisionedRegion = .failure(error)
+            }
+        }
+    }
+
+    func detectCurrentRegion() {
+        guard case .idle = currentRegion else { return }
+        currentRegion = .working
+        Task {
+            do {
+                let region = try await Provisioning().provideRegion().code
+                currentRegion = .success(region)
+            } catch {
+                logger.error("check region change: \(error)")
+                currentRegion = .failure(error)
             }
         }
     }
@@ -154,7 +189,7 @@ class DeviceUpdateCardModel: ObservableObject {
         switch error {
         case .canceled: result = .canceled
         case .failedDownloading: result = .failedDownload
-        case .failedPrepearing: result = .failedPrepare
+        case .failedPreparing: result = .failedPrepare
         case .failedUploading: result = .failedUpload
         }
         analytics.flipperUpdateResult(
@@ -165,7 +200,6 @@ class DeviceUpdateCardModel: ObservableObject {
     }
 
     var alertVersion: String = ""
-    var alertVersionColor: Color = .clear
 
     func verifyUpdateResult() {
         guard
@@ -176,7 +210,6 @@ class DeviceUpdateCardModel: ObservableObject {
             return
         }
         alertVersion = updateToVersion
-        alertVersionColor = channelColor
         self.updateFromVersion = nil
         self.updateToVersion = nil
 
@@ -190,10 +223,22 @@ class DeviceUpdateCardModel: ObservableObject {
 
             if installedFirmware == updateToVersion {
                 logger.info("update success: \(updateFromToVersion)")
-                showUpdateSuccessed = true
+                showUpdateSucceeded = true
+
+                analytics.flipperUpdateResult(
+                    id: updateID,
+                    from: updateFromVersion,
+                    to: updateToVersion,
+                    status: .completed)
             } else {
                 logger.info("update error: \(updateFromToVersion)")
                 showUpdateFailed = true
+
+                analytics.flipperUpdateResult(
+                    id: updateID,
+                    from: updateFromVersion,
+                    to: updateToVersion,
+                    status: .failed)
             }
         }
     }
@@ -232,7 +277,7 @@ class DeviceUpdateCardModel: ObservableObject {
         showChannelSelector = false
         switch channel {
         case "Release": self.channel = .release
-        case "Release-Candidate": self.channel = .canditate
+        case "Release-Candidate": self.channel = .candidate
         case "Development": self.channel = .development
         default: break
         }
@@ -260,7 +305,7 @@ class DeviceUpdateCardModel: ObservableObject {
         self.availableFirmwareVersion = version
         switch channel {
         case .development: availableFirmware = "Dev \(version.version)"
-        case .canditate: availableFirmware = "RC \(version.version.dropLast(3))"
+        case .candidate: availableFirmware = "RC \(version.version.dropLast(3))"
         case .release: availableFirmware = "Release \(version.version)"
         case .custom(let url): availableFirmware = "Custom \(url.lastPathComponent)"
         }
@@ -276,9 +321,10 @@ class DeviceUpdateCardModel: ObservableObject {
         guard validateAvailableFirmware() else { return }
 
         guard checkSelectedChannel() else { return }
-        guard checkInsalledFirmware() else { return }
+        guard checkInstalledFirmware() else { return }
 
         guard validateManifest() else { return }
+        guard validateRegion() else { return }
 
         state = .noUpdates
     }
@@ -326,6 +372,40 @@ class DeviceUpdateCardModel: ObservableObject {
         return true
     }
 
+    func validateRegion() -> Bool {
+        let provisionedRegionCode: ISOCode
+        let currentRegionCode: ISOCode
+
+        switch provisionedRegion {
+        case .success(let region):
+            provisionedRegionCode = region
+        case .failure:
+            state = .versionUpdate
+            return false
+        default:
+            state = .connecting
+            return false
+        }
+
+        switch currentRegion {
+        case .success(let region):
+            currentRegionCode = region
+        case .failure:
+            state = .versionUpdate
+            return false
+        default:
+            state = .connecting
+            return false
+        }
+
+        guard currentRegionCode == provisionedRegionCode else {
+            state = .versionUpdate
+            return false
+        }
+
+        return true
+    }
+
     func validateAvailableFirmware() -> Bool {
         availableFirmware != nil
     }
@@ -341,7 +421,7 @@ class DeviceUpdateCardModel: ObservableObject {
         return true
     }
 
-    func checkInsalledFirmware() -> Bool {
+    func checkInstalledFirmware() -> Bool {
         guard let installedFirmware = installedFirmware else {
             return false
         }

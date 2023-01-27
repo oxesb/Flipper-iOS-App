@@ -6,6 +6,7 @@ public protocol RPC {
     // MARK: System
 
     func deviceInfo() -> AsyncThrowingStream<(String, String), Swift.Error>
+    func powerInfo() -> AsyncThrowingStream<(String, String), Swift.Error>
     @discardableResult
     func ping(_ bytes: [UInt8]) async throws -> [UInt8]
     func reboot(to mode: Message.RebootMode) async throws
@@ -18,6 +19,7 @@ public protocol RPC {
     func getStorageInfo(at path: Path) async throws -> StorageSpace
     func listDirectory(at path: Path) async throws -> [Element]
     func getSize(at path: Path) async throws -> Int
+    func getTimestamp(at path: Path) async throws -> Date
     func createFile(at path: Path, isDirectory: Bool) async throws
     func deleteFile(at path: Path, force: Bool) async throws
     func readFile(at path: Path) -> AsyncThrowingStream<[UInt8], Swift.Error>
@@ -81,5 +83,50 @@ public extension RPC {
 
     func appButtonPress() async throws {
         try await appButtonPress("")
+    }
+}
+
+public extension RPC {
+    func fileExists(at path: Path) async throws -> Bool {
+        do {
+            _ = try await getSize(at: path)
+            return true
+        } catch let error as Error where error == .storage(.doesNotExist) {
+            return false
+        }
+    }
+
+    func readFile(
+        at path: Path,
+        progress: (Double) -> Void
+    ) async throws -> String {
+        let size = try await getSize(at: path)
+        guard size > 0 else {
+            progress(1)
+            return ""
+        }
+        var bytes: [UInt8] = []
+        for try await next in readFile(at: path) {
+            bytes += next
+            progress(Double(bytes.count) / Double(size))
+        }
+        return .init(decoding: bytes, as: UTF8.self)
+    }
+
+    func writeFile(
+        at path: Path,
+        string: String,
+        progress: (Double) -> Void
+    ) async throws {
+        let bytes = [UInt8](string.utf8)
+        guard !bytes.isEmpty else {
+            progress(1)
+            return
+        }
+        var sent = 0
+        for try await next in writeFile(at: path, bytes: bytes) {
+            sent += next
+            progress(Double(sent) / Double(bytes.count))
+        }
     }
 }

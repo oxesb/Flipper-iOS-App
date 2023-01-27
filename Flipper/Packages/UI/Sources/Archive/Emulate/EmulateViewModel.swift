@@ -9,117 +9,107 @@ import Logging
 class EmulateViewModel: ObservableObject {
     private let logger = Logger(label: "emulate-vm")
 
-    @Inject var rpc: RPC
     @Inject var analytics: Analytics
+    var emulate: Emulate = .init()
 
     @Published var item: ArchiveItem
-    @Published var isConnected = false
+    @Published var deviceStatus: DeviceStatus = .disconnected
     @Published var isEmulating = false
-    @Published var isFlipperAppStarted = false
-    @Published var isFlipperAppCancellation = false
-    private var emulateTask: Task<Void, Swift.Error>?
+    @Published var showBubble = false
+    @Published var showAppLocked = false
+    @Published var showRestricted = false
 
-    @Published var appState: AppState = .shared
+    var showProgressButton: Bool {
+        deviceStatus == .connecting ||
+        deviceStatus == .synchronizing
+    }
+
+    var canEmulate: Bool {
+        (deviceStatus == .connected || deviceStatus == .synchronized)
+            && item.status == .synchronized
+    }
+
+    var emulateDuration: Int
+
+    @Inject private var appState: AppState
     var disposeBag = DisposeBag()
 
     init(item: ArchiveItem) {
         self.item = item
-
-        rpc.onAppStateChanged { [weak self] state in
-            guard let self = self else { return }
-            Task { @MainActor in
-                self.onAppStateChanged(state)
-            }
-        }
+        self.emulateDuration = emulate.duration(for: item)
 
         appState.$status
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in
-                guard let self = self else { return }
-                self.isConnected = ($0 == .connected || $0 == .synchronized)
-                if $0 == .disconnected {
+                guard let self else { return }
+                self.deviceStatus = $0
+                if self.deviceStatus == .disconnected {
                     self.resetEmulate()
                 }
             }
             .store(in: &disposeBag)
-    }
 
-    func onAppStateChanged(_ state: Message.AppState) {
-        isFlipperAppStarted = state == .started
-        if state == .closed {
-            isEmulating = false
-            isFlipperAppCancellation = false
-        }
-        logger.info("flipper app \(state)")
-    }
-
-    func waitForAppStartedEvent() async throws {
-        while !isFlipperAppStarted {
-            try await Task.sleep(nanoseconds: 100 * 1_000_000)
-        }
-    }
-
-    func startApp() async throws {
-        while !isFlipperAppCancellation {
-            do {
-                try await rpc.appStart(item.fileType.application, args: "RPC")
-                return
-            } catch let error as Error {
-                if error == .application(.systemLocked) {
-                    try await Task.sleep(nanoseconds: 100 * 1_000_000)
-                    continue
+        emulate.onStateChanged = { [weak self] state in
+            guard let self else { return }
+            Task { @MainActor in
+                if state == .closed {
+                    self.isEmulating = false
                 }
-                throw error
+                if state == .locked {
+                    self.isEmulating = false
+                    self.showAppLocked = true
+                }
+                if state == .restricted {
+                    self.isEmulating = false
+                    self.showRestricted = true
+                }
+                if state == .staring || state == .started || state == .closed {
+                    feedback(style: .soft)
+                }
             }
         }
     }
 
-    func checkCancellation() throws {
-        guard !isFlipperAppCancellation else {
-            throw Error.canceled
+    func showBubbleIfNeeded() {
+        guard !showBubble else { return }
+        Task {
+            withAnimation(.linear(duration: 0.3)) {
+                showBubble = true
+            }
+            try await Task.sleep(seconds: 2)
+            withAnimation(.linear(duration: 1)) {
+                showBubble = false
+            }
         }
     }
 
     func startEmulate() {
         guard !isEmulating else { return }
         isEmulating = true
-        emulateTask = Task {
-            do {
-                try checkCancellation()
-                try await startApp()
-                try await waitForAppStartedEvent()
-                try checkCancellation()
-                try await rpc.appLoadFile(item.path)
-                if item.fileType == .subghz {
-                    try checkCancellation()
-                    try await rpc.appButtonPress()
-                }
-            } catch {
-                logger.error("emilating key: \(error)")
-            }
-            emulateTask = nil
-        }
+        emulate.startEmulate(item)
+        showBubbleIfNeeded()
         recordEmulate()
     }
 
     func stopEmulate() {
         guard isEmulating else { return }
-        guard !isFlipperAppCancellation else { return }
-        isFlipperAppCancellation = true
-        Task {
-            _ = await emulateTask?.result
-            do {
-                try await rpc.appExit()
-            } catch {
-                logger.error("exiting the app: \(error)")
-            }
-        }
+        emulate.stopEmulate()
+    }
+
+    func forceStopEmulate() {
+        guard isEmulating else { return }
+        emulate.forceStopEmulate()
+    }
+
+    func toggleEmulate() {
+        isEmulating
+            ? stopEmulate()
+            : startEmulate()
     }
 
     func resetEmulate() {
         isEmulating = false
-        isFlipperAppStarted = false
-        isFlipperAppCancellation = false
+        emulate.resetEmulate()
     }
 
     // Analytics

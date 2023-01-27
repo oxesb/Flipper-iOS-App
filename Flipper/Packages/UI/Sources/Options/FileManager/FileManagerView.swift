@@ -1,10 +1,11 @@
 import Core
 import SwiftUI
 import Peripheral
+import UniformTypeIdentifiers
 
 struct FileManagerView: View {
     @StateObject var viewModel: FileManagerViewModel
-    @Environment(\.dismiss) var dismiss
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack {
@@ -17,26 +18,47 @@ struct FileManagerView: View {
             case .none: ProgressView()
             }
         }
-        .navigationTitle(viewModel.title)
+        .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if !viewModel.path.isEmpty, case .list = viewModel.content {
-                Menu {
-                    Button {
-                        viewModel.newElement(isDirectory: false)
-                    } label: {
-                        Text("File")
-                    }
-
-                    Button {
-                        viewModel.newElement(isDirectory: true)
-                    } label: {
-                        Text("Folder")
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .foregroundColor(.primary)
+            LeadingToolbarItems {
+                BackButton {
+                    dismiss()
                 }
+                Title(viewModel.title)
+            }
+            TrailingToolbarItems {
+                if !viewModel.path.isEmpty, case .list = viewModel.content {
+                    NavBarMenu {
+                        Button {
+                            viewModel.newElement(isDirectory: false)
+                        } label: {
+                            Text("File")
+                        }
+
+                        Button {
+                            viewModel.newElement(isDirectory: true)
+                        } label: {
+                            Text("Folder")
+                        }
+
+                        Button {
+                            viewModel.showFileImporter()
+                        } label: {
+                            Text("Import")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+        }
+        .fileImporter(
+            isPresented: $viewModel.isFileImporterPresented,
+            allowedContentTypes: [UTType.item]
+        ) { result in
+            if case .success(let url) = result {
+                viewModel.importFile(url: url)
             }
         }
         .onAppear {
@@ -117,12 +139,18 @@ struct FileManagerView: View {
 
             HStack {
                 Spacer()
-                RoundedButton("Close") {
+                Button {
                     dismiss()
+                } label: {
+                    Text("Close")
+                        .roundedButtonStyle(maxWidth: .infinity)
                 }
                 Spacer()
-                RoundedButton("Save") {
+                Button {
                     viewModel.save()
+                } label: {
+                    Text("Save")
+                        .roundedButtonStyle(maxWidth: .infinity)
                 }
                 Spacer()
             }
@@ -141,9 +169,19 @@ struct FileManagerView: View {
 
             HStack {
                 Spacer()
-                RoundedButton("Cancel", action: viewModel.cancel)
+                Button {
+                    viewModel.cancel()
+                } label: {
+                    Text("Cancel")
+                        .roundedButtonStyle(maxWidth: .infinity)
+                }
                 Spacer()
-                RoundedButton("Create", action: viewModel.create)
+                Button {
+                    viewModel.create()
+                } label: {
+                    Text("Create")
+                        .roundedButtonStyle(maxWidth: .infinity)
+                }
                 Spacer()
             }
         }
@@ -156,15 +194,19 @@ struct FileManagerView: View {
                 .font(.title)
             HStack {
                 Spacer()
-                RoundedButton(
-                    "Cancel",
-                    action: viewModel.cancel)
+                Button {
+                    viewModel.cancel()
+                } label: {
+                    Text("Cancel")
+                        .roundedButtonStyle(maxWidth: .infinity)
+                }
                 Spacer()
-                RoundedButton(
-                    "Force delete",
-                    isDanger: true,
-                    action: viewModel.forceDelete
-                )
+                Button {
+                    viewModel.forceDelete()
+                } label: {
+                    Text("Force delete")
+                        .roundedButtonStyle(maxWidth: .infinity, isDanger: true)
+                }
                 Spacer()
             }
         }

@@ -16,16 +16,22 @@ struct NFCCardView: View {
     }
 }
 
-fileprivate extension ArchiveItem {
-    var type: String { self["Device type"] ?? "" }
-    var uid: String { self["UID"] ?? "" }
-    var atqa: String { self["ATQA"] ?? "" }
-    var sak: String { self["SAK"] ?? "" }
+private extension ArchiveItem {
+    var props: [Property] {
+        shadowCopy.isEmpty
+            ? self.properties
+            : self.shadowCopy
+    }
+
+    var type: String { props["Device type"] ?? "" }
+    var uid: String { props["UID"] ?? "" }
+    var atqa: String { props["ATQA"] ?? "" }
+    var sak: String { props["SAK"] ?? "" }
 
     // bank card
-    var aid: String { self["AID"] ?? "" }
-    var name: String { self["Name"] ?? "" }
-    var number: String { self["Number"] ?? "" }
-    var expData: String { self["Exp data"] ?? "" }
-    var countryCode: String { self["Country code"] ?? "" }
+    var aid: String { props["AID"] ?? "" }
+    var name: String { props["Name"] ?? "" }
+    var number: String { props["Number"] ?? "" }
+    var expData: String { props["Exp data"] ?? "" }
+    var countryCode: String { props["Country code"] ?? "" }
 }

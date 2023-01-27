@@ -14,35 +14,23 @@ class InfoViewModel: ObservableObject {
 
     var backup: ArchiveItem
     @Published var item: ArchiveItem
+    @Published var showShareView = false
     @Published var showDumpEditor = false
     @Published var isEditing = false
     @Published var isError = false
     var error = ""
 
-    var isNFC: Bool {
-        item.fileType == .nfc
-    }
-
-    var isEditableNFC: Bool {
-        guard isNFC, let typeProperty = item.properties.first(
-            where: { $0.key == "Mifare Classic type" }
-        ) else {
-            return false
-        }
-        return typeProperty.value == "1K" || typeProperty.value == "4K"
-    }
-
-    @Inject var rpc: RPC
-    @Published var appState: AppState = .shared
+    @Inject private var rpc: RPC
+    @Inject private var appState: AppState
+    @Inject private var archive: Archive
     var dismissPublisher = PassthroughSubject<Void, Never>()
     var disposeBag = DisposeBag()
 
     @Published var isConnected = false
-    @Published var isFlipperAppStarted = false
 
-    init(item: ArchiveItem?) {
-        self.item = item ?? .none
-        self.backup = item ?? .none
+    init(item: ArchiveItem) {
+        self.item = item
+        self.backup = item
         watchIsFavorite()
     }
 
@@ -57,9 +45,21 @@ class InfoViewModel: ObservableObject {
         appState.$status
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in
-                self?.isConnected = ($0 == .connected || $0 == .synchronized)
+                guard let self else { return }
+                self.isConnected = ($0 == .connected || $0 == .synchronized)
+                self.updateItemStatus(deviceStatus: $0)
             }
             .store(in: &disposeBag)
+    }
+
+    func updateItemStatus(deviceStatus: DeviceStatus) {
+        if deviceStatus == .synchronizing {
+            self.item.status = .synchronizing
+        } else {
+            Task { @MainActor in
+                item.status = try await archive.status(for: item)
+            }
+        }
     }
 
     func toggleFavorite() {
@@ -67,7 +67,7 @@ class InfoViewModel: ObservableObject {
         guard !isEditing else { return }
         Task {
             do {
-                try await appState.archive.onIsFavoriteToggle(item.path)
+                try await archive.onIsFavoriteToggle(item.path)
             } catch {
                 logger.error("toggling favorite: \(error)")
             }
@@ -75,6 +75,7 @@ class InfoViewModel: ObservableObject {
     }
 
     func edit() {
+        backup = item
         withAnimation {
             isEditing = true
         }
@@ -82,19 +83,13 @@ class InfoViewModel: ObservableObject {
     }
 
     func share() {
-        Core.share(item)
-        recordShare()
-    }
-
-    func shareAsFile() {
-        Core.share(item, as: .file)
-        recordShare()
+        showShareView = true
     }
 
     func delete() {
         Task {
             do {
-                try await appState.archive.delete(item.id)
+                try await archive.delete(item.id)
                 try await appState.synchronize()
             } catch {
                 logger.error("deleting item: \(error)")
@@ -113,18 +108,13 @@ class InfoViewModel: ObservableObject {
         Task {
             do {
                 if backup.name != item.name {
-                    try await appState.archive.rename(backup.id, to: item.name)
+                    try await archive.rename(backup.id, to: item.name)
                 }
-                try await appState.archive.upsert(item)
-                backup = item
+                try await archive.upsert(item)
                 withAnimation {
                     isEditing = false
                 }
-                item.status = .synchronizing
                 try await appState.synchronize()
-                withAnimation {
-                    item.status = appState.archive.status(for: item)
-                }
             } catch {
                 logger.error("saving changes: \(error)")
                 item.status = .error
@@ -154,8 +144,19 @@ class InfoViewModel: ObservableObject {
     func recordEdit() {
         analytics.appOpen(target: .keyEdit)
     }
+}
 
-    func recordShare() {
-        analytics.appOpen(target: .keyShare)
+extension ArchiveItem {
+    var isNFC: Bool {
+        kind == .nfc
+    }
+
+    var isEditableNFC: Bool {
+        guard isNFC, let typeProperty = properties.first(
+            where: { $0.key == "Mifare Classic type" }
+        ) else {
+            return false
+        }
+        return typeProperty.value == "1K" || typeProperty.value == "4K"
     }
 }

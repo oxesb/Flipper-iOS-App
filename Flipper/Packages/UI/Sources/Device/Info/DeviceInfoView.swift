@@ -4,7 +4,7 @@ import SwiftUI
 
 struct DeviceInfoView: View {
     @StateObject var viewModel: DeviceInfoViewModel
-    @Environment(\.dismiss) var dismiss
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ScrollView {
@@ -41,32 +41,33 @@ struct DeviceInfoView: View {
                 )
 
                 DeviceInfoViewCard(
-                    title: "Bootloader",
-                    values: [
-                        "Software Revision": viewModel.softwareRevision,
-                        "Build Date": viewModel.buildDate,
-                        "Target": viewModel.firmwareTarget
-                    ]
+                    title: "Other",
+                    values: viewModel.otherKeys
                 )
             }
+            .textSelection(.enabled)
             .padding(.vertical, 14)
         }
         .background(Color.background)
         .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
+            LeadingToolbarItems {
                 BackButton {
                     dismiss()
                 }
+                Title("Device Info")
             }
-            ToolbarItem(placement: .navigationBarLeading) {
-                Text("Device Info")
-                    .font(.system(size: 20, weight: .bold))
+            TrailingToolbarItems {
+                ShareButton {
+                    viewModel.share()
+                }
+                .disabled(!viewModel.isReady)
+                .opacity(viewModel.isReady ? 1 : 0.4)
             }
         }
-        .onAppear {
-            viewModel.getDeviceInfo()
+        .task {
+            await viewModel.getInfo()
         }
     }
 }

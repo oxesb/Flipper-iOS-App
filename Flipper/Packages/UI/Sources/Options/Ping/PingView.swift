@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PingView: View {
     @StateObject var viewModel: PingViewModel
+    @Environment(\.dismiss) private var dismiss
     @State var entered: String = ""
 
     var body: some View {
@@ -49,7 +50,15 @@ struct PingView: View {
             }
         }
         .padding(14)
-        .navigationTitle("Ping")
+        .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            LeadingToolbarItems {
+                BackButton {
+                    dismiss()
+                }
+                Title("Ping")
+            }
+        }
     }
 }

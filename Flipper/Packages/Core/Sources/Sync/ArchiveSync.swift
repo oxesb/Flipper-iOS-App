@@ -1,14 +1,15 @@
 import Inject
+import Logging
 import Peripheral
 import Foundation
-import Logging
+import OrderedCollections
 
 class ArchiveSync: ArchiveSyncProtocol {
     private let logger = Logger(label: "archive_synchronization")
 
-    @Inject private var manifestStorage: SyncedManifestStorage
     @Inject private var flipperArchive: FlipperArchiveProtocol
     @Inject private var mobileArchive: MobileArchiveProtocol
+    @Inject private var syncedItems: SyncedItemsProcotol
 
     private var state: State = .idle
     private var eventsSubject: SafeSubject<Event> = .init()
@@ -32,7 +33,7 @@ class ArchiveSync: ArchiveSyncProtocol {
     var syncProgressFactor: Double { 1.0 - manifestProgressFactor }
 
     private func sync(_ progress: (Double) -> Void) async throws {
-        let lastManifest = manifestStorage.manifest ?? .init()
+        let lastManifest = syncedItems.manifest ?? .init()
 
         let mobileChanges = try await mobileArchive
             .getManifest()
@@ -51,36 +52,51 @@ class ArchiveSync: ArchiveSyncProtocol {
         let syncItemFactor = syncProgressFactor / Double(actions.count)
         var currentProgress = manifestProgressFactor
 
-        for (path, action) in actions {
+        func preciseProgress(_ itemProgress: Double) {
+            progress(currentProgress + syncItemFactor * itemProgress)
+        }
+
+        // NOTE: Flipper's filesystem is case-insensitive,
+        // so we should delete the key first
+        let sortedActions = sortActions(actions)
+
+        for (path, action) in sortedActions {
             guard state != .canceled else {
                 break
             }
             switch action {
             case .update(.mobile):
-                try await updateOnMobile(path) { itemProgress in
-                    progress(currentProgress + syncItemFactor * itemProgress)
-                }
+                try await updateOnMobile(path, progress: preciseProgress)
             case .delete(.mobile):
-                try await deleteOnMobile(path) { itemProgress in
-                    progress(currentProgress + syncItemFactor * itemProgress)
-                }
+                try await deleteOnMobile(path, progress: preciseProgress)
             case .update(.flipper):
-                try await updateOnFlipper(path) { itemProgress in
-                    progress(currentProgress + syncItemFactor * itemProgress)
-                }
+                try await updateOnFlipper(path, progress: preciseProgress)
             case .delete(.flipper):
-                try await deleteOnFlipper(path) { itemProgress in
-                    progress(currentProgress + syncItemFactor * itemProgress)
-                }
+                try await deleteOnFlipper(path, progress: preciseProgress)
             case .conflict:
-                try await keepBoth(path) { itemProgress in
-                    progress(currentProgress + syncItemFactor * itemProgress)
-                }
+                path.isShadowFile
+                    ? try await updateOnMobile(path, progress: preciseProgress)
+                    : try await keepBoth(path, progress: preciseProgress)
             }
             currentProgress += syncItemFactor
         }
 
-        manifestStorage.manifest = try await mobileArchive.getManifest()
+        syncedItems.manifest = try await mobileArchive.getManifest()
+    }
+
+    private func sortActions(
+        _ actions: [Path: Action]
+    ) -> OrderedDictionary<Path, Action> {
+        var orderedActions = OrderedDictionary<Path, Action>(
+            uniqueKeysWithValues: actions
+        )
+        orderedActions.sort { first, second in
+            switch (first.value, second.value) {
+            case (.delete, _): return true
+            default: return false
+            }
+        }
+        return orderedActions
     }
 
     func cancel() {
@@ -150,30 +166,16 @@ class ArchiveSync: ArchiveSyncProtocol {
     // MARK: Duplicating item
 
     private func duplicate(_ path: Path) async throws -> Path? {
-        let newPath = try await findNextAvailableName(for: path)
+        let newPath = try await mobileArchive.nextAvailablePath(for: path)
         let content = try await mobileArchive.read(path)
         try await mobileArchive.upsert(content, at: newPath)
         return newPath
     }
+}
 
-    private func findNextAvailableName(for path: Path) async throws -> Path {
-        let name = try ArchiveItem.Name(path)
-        let type = try ArchiveItem.FileType(path)
-
-        // format: name_{Int}.type
-        let parts = name.value.split(separator: "_")
-        var number = parts.count >= 2
-            ? Int(parts.last.unsafelyUnwrapped) ?? 1
-            : 1
-
-        var location: Path { path.removingLastComponent }
-        var newFileName: String { "\(name)_\(number).\(type)" }
-        var newFilePath: Path { location.appending(newFileName) }
-
-        while try await mobileArchive.getManifest()[newFilePath] != nil {
-            number += 1
-        }
-
-        return newFilePath
+extension Path {
+    var isShadowFile: Bool {
+        guard let filename = lastComponent else { return false }
+        return filename.hasSuffix(FileType.shadow.extension)
     }
 }

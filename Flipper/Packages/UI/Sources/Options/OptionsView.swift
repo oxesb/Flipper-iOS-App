@@ -3,77 +3,104 @@ import SwiftUI
 
 struct OptionsView: View {
     @StateObject var viewModel: OptionsViewModel
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationView {
-            List {
-                Section(header: Text("Utils")) {
-                    NavigationLink("Ping") {
-                        PingView(viewModel: .init())
-                    }
-                    .disabled(!viewModel.isOnline)
-                    NavigationLink("Stress Test") {
-                        StressTestView(viewModel: .init())
-                    }
-                    .disabled(!viewModel.isOnline)
-                    NavigationLink("Speed Test") {
-                        SpeedTestView(viewModel: .init())
-                    }
-                    .disabled(!viewModel.isOnline)
-                    NavigationLink("Logs") {
-                        LogsView(viewModel: .init())
-                    }
-                    Button("Backup Keys") {
-                        viewModel.backupKeys()
-                    }
-                    .disabled(!viewModel.hasKeys)
+        List {
+            Section(header: Text("Utils")) {
+                NavigationLink("Ping") {
+                    PingView(viewModel: .init())
                 }
-
-                Section(header: Text("Remote")) {
-                    NavigationLink("Screen Streaming") {
-                        RemoteContolView(viewModel: .init())
-                    }
-                    NavigationLink("File Manager") {
-                        FileManagerView(viewModel: .init())
-                    }
-                    Button("Reboot Flipper") {
-                        viewModel.rebootFlipper()
-                    }
-                    .foregroundColor(viewModel.isOnline ? .accentColor : .gray)
+                .disabled(!viewModel.isAvailable)
+                NavigationLink("Stress Test") {
+                    StressTestView(viewModel: .init())
                 }
-                .disabled(!viewModel.isOnline)
+                .disabled(!viewModel.isAvailable)
+                NavigationLink("Speed Test") {
+                    SpeedTestView(viewModel: .init())
+                }
+                .disabled(!viewModel.isAvailable)
+                NavigationLink("Logs") {
+                    LogsView(viewModel: .init())
+                }
+                Button("Backup Keys") {
+                    viewModel.backupKeys()
+                }
+                .disabled(!viewModel.hasKeys)
+            }
 
-                Section(header: Text("Danger")) {
+            Section(header: Text("Remote")) {
+                NavigationLink("Screen Streaming") {
+                    RemoteControlView(viewModel: .init())
+                }
+                NavigationLink("File Manager") {
+                    FileManagerView(viewModel: .init())
+                }
+                Button("Reboot Flipper") {
+                    viewModel.rebootFlipper()
+                }
+                .foregroundColor(viewModel.isAvailable ? .accentColor : .gray)
+            }
+            .disabled(!viewModel.isAvailable)
+
+            Section {
+                Button("Widget Settings") {
+                    viewModel.showWidgetSettings()
+                }
+                .foregroundColor(.primary)
+            }
+
+            if viewModel.isDebugMode {
+                Section(header: Text("Debug")) {
+                    Toggle(isOn: $viewModel.isProvisioningDisabled) {
+                        Text("Disable provisioning")
+                    }
+                    NavigationLink("I'm watching you") {
+                        CarrierView(viewModel: .init())
+                    }
                     Button("Reset App") {
-                        viewModel.resetApp()
+                        viewModel.showResetApp = true
                     }
                     .foregroundColor(.sRed)
-                }
-
-                Section {
-                } footer: {
-                    VStack(alignment: .center) {
-                        Text("Flipper Mobile App")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.black20)
-                        Text("Version: \(viewModel.appVersion)")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.black40)
+                    .actionSheet(isPresented: $viewModel.showResetApp) {
+                        .init(title: Text("Are you sure?"), buttons: [
+                            .destructive(Text("Reset App")) {
+                                viewModel.resetApp()
+                            },
+                            .cancel()
+                        ])
                     }
-                    .frame(maxWidth: .infinity)
                 }
-                .padding(.top, -20)
-                .padding(.bottom, 20)
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Text("Options")
-                        .font(.system(size: 20, weight: .bold))
+
+            Section {
+            } footer: {
+                VStack(alignment: .center) {
+                    Text("Flipper Mobile App")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.black20)
+                    Text("Version: \(viewModel.appVersion)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.black40)
                 }
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
+                .onTapGesture {
+                    viewModel.onVersionTapGesture()
+                }
+            }
+            .padding(.top, -40)
+            .padding(.bottom, 20)
+        }
+        .navigationBarBackButtonHidden(true)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            LeadingToolbarItems {
+                BackButton {
+                    dismiss()
+                }
+                Title("Options")
             }
         }
-        .navigationViewStyle(.stack)
-        .navigationBarColors(foreground: .primary, background: .a1)
     }
 }

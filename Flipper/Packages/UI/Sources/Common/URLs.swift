@@ -33,18 +33,22 @@ extension URL {
     // MARK: Help
 
     static var helpToKnowName: URL {
-        .init(string: "https://docs.flipperzero.one/basics/control/dolphin#yj-flipper-name")!
+        .init(string: "https://flipp.dev/passport")!
     }
 
     static var helpToTurnOnBluetooth: URL {
-        .init(string: "https://docs.flipperzero.one/basics/control/bluetooth#n3-turn-on-bluetooth")!
+        .init(string: "https://flipp.dev/bluetooth-on")!
     }
 
     static var helpToInstallFirmware: URL {
-        .init(string: "https://docs.flipperzero.one/basics/firmware-update")!
+        .init(string: "https://flipp.dev/firmware-update")!
     }
 
     static var helpToReboot: URL {
-        .init(string: "https://docs.flipperzero.one/basics/reboot")!
+        .init(string: "https://flipp.dev/reboot")!
+    }
+
+    static var helpToFactoryReset: URL {
+        .init(string: "https://flipp.dev/storage-repair")!
     }
 }

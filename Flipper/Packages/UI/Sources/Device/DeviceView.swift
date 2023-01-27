@@ -29,10 +29,20 @@ struct DeviceView: View {
                                     .padding(.top, 24)
                                     .padding(.horizontal, 14)
                             }
-                            .disabled(!viewModel.status.isOnline)
+                            .disabled(!viewModel.status.isAvailable)
                         }
 
                         VStack(spacing: 24) {
+                            VStack(spacing: 0) {
+                                NavigationButton(
+                                    image: "Options",
+                                    title: "Options"
+                                ) {
+                                    OptionsView(viewModel: .init())
+                                }
+                            }
+                            .cornerRadius(10)
+
                             if viewModel.status != .noDevice {
                                 VStack(spacing: 0) {
                                     ActionButton(
@@ -113,7 +123,7 @@ struct DeviceView: View {
                     .init(
                         title: Text("This action won't delete your keys"),
                         buttons: [
-                            .destructive(Text("Foget Flipper")) {
+                            .destructive(Text("Forget Flipper")) {
                                 viewModel.forgetFlipper()
                             },
                             .cancel()
@@ -121,9 +131,9 @@ struct DeviceView: View {
                     )
                 }
             }
-            .navigationViewStyle(.stack)
             .navigationBarHidden(true)
-            .navigationBarColors(foreground: .primary, background: .a1)
         }
+        .navigationViewStyle(.stack)
+        .navigationBarColors(foreground: .primary, background: .a1)
     }
 }

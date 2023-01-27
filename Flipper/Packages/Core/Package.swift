@@ -24,6 +24,9 @@ let package = Package(
             name: "Peripheral",
             path: "../Peripheral"),
         .package(
+            name: "MFKey32v2",
+            path: "../MFKey32v2"),
+        .package(
             name: "Collections",
             url: "https://github.com/apple/swift-collections.git",
             .upToNextMajor(from: "1.0.0")),
@@ -36,6 +39,10 @@ let package = Package(
             url: "https://github.com/apple/swift-log.git",
             from: "1.4.2"),
         .package(
+            name: "Base64",
+            url: "https://github.com/swiftstack/radix.git",
+            branch: "dev"),
+        .package(
             name: "DCompression",
             url: "https://github.com/swiftstack/dcompression.git",
             branch: "dev")
@@ -47,8 +54,10 @@ let package = Package(
                 "Inject",
                 "Analytics",
                 "Peripheral",
-                "SwiftProtobuf",
+                "MFKey32v2",
+                "Base64",
                 "DCompression",
+                "SwiftProtobuf",
                 "Collections",
                 "Logging"
             ],

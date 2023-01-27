@@ -26,7 +26,7 @@ public class BluetoothRPC: RPC {
     private func peripheralDidChange() {
         peripheralHandle = peripheral?.info
             .sink { [weak self] in
-                guard let self = self else { return }
+                guard let self else { return }
                 Task { await self.updateSession() }
             }
     }
@@ -82,9 +82,32 @@ extension BluetoothRPC {
                     guard let session = session else {
                         throw Error.unsupported(0)
                     }
-                    let streams = await session.send(.system(.info))
+                    let streams = await session.send(.system(.deviceInfo))
                     for try await next in streams.input {
-                        guard case let .system(.info(key, value)) = next else {
+                        guard case let .system(.deviceInfo(key, value)) = next else {
+                            throw Error.unexpectedResponse(next)
+                        }
+                        continuation.yield((key, value))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    public func powerInfo(
+    ) -> AsyncThrowingStream<(String, String), Swift.Error> {
+        .init { continuation in
+            Task {
+                do {
+                    guard let session = session else {
+                        throw Error.unsupported(0)
+                    }
+                    let streams = await session.send(.system(.powerInfo))
+                    for try await next in streams.input {
+                        guard case let .system(.powerInfo(key, value)) = next else {
                             throw Error.unexpectedResponse(next)
                         }
                         continuation.yield((key, value))
@@ -170,6 +193,16 @@ extension BluetoothRPC {
             throw Error.unexpectedResponse(response)
         }
         return size
+    }
+
+    public func getTimestamp(at path: Path) async throws -> Date {
+        let response = try await session?
+            .send(.storage(.timestamp(path)))
+            .response
+        guard case .storage(.timestamp(let timestamp)) = response else {
+            throw Error.unexpectedResponse(response)
+        }
+        return timestamp
     }
 
     public func createFile(at path: Path, isDirectory: Bool) async throws {

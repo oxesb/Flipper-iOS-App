@@ -8,6 +8,10 @@ class RPCMock: RPC {
         .init { _ in }
     }
 
+    func powerInfo() -> AsyncThrowingStream<(String, String), Swift.Error> {
+        .init { _ in }
+    }
+
     @discardableResult
     func ping(_ bytes: [UInt8]) async throws -> [UInt8] {
         .init()
@@ -36,6 +40,10 @@ class RPCMock: RPC {
 
     func getSize(at path: Path) async throws -> Int {
         0
+    }
+
+    func getTimestamp(at path: Path) async throws -> Date {
+        .init()
     }
 
     func createFile(at path: Path, isDirectory: Bool) async throws {

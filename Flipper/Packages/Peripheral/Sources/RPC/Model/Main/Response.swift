@@ -9,8 +9,9 @@ public enum Response: Equatable {
     case storage(Storage)
 
     public enum System: Equatable {
+        case deviceInfo(String, String)
+        case powerInfo(String, String)
         case ping([UInt8])
-        case info(String, String)
         case dateTime(Date)
         case update(Update)
 
@@ -40,6 +41,7 @@ public enum Response: Equatable {
         case stat(Int)
         case file([UInt8])
         case hash(String)
+        case timestamp(Date)
     }
 }
 
@@ -59,7 +61,6 @@ extension Response {
 }
 
 extension Response {
-    // swiftlint:disable cyclomatic_complexity
     init(decoding content: PB_Main.OneOf_Content) {
         switch content {
         // Empty
@@ -70,12 +71,16 @@ extension Response {
             self.init(decoding: response)
         case .systemDeviceInfoResponse(let response):
             self.init(decoding: response)
+        case .systemPowerInfoResponse(let response):
+            self.init(decoding: response)
         case .systemGetDatetimeResponse(let response):
             self.init(decoding: response)
         case .systemUpdateResponse(let response):
             self.init(decoding: response)
         // Storage
         case .storageInfoResponse(let response):
+            self.init(decoding: response)
+        case .storageTimestampResponse(let response):
             self.init(decoding: response)
         case .storageListResponse(let response):
             self.init(decoding: response)
@@ -100,7 +105,11 @@ extension Response {
     }
 
     init(decoding response: PBSystem_DeviceInfoResponse) {
-        self = .system(.info(response.key, response.value))
+        self = .system(.deviceInfo(response.key, response.value))
+    }
+
+    init(decoding response: PBSystem_PowerInfoResponse) {
+        self = .system(.powerInfo(response.key, response.value))
     }
 
     init(decoding response: PBSystem_GetDateTimeResponse) {
@@ -113,6 +122,10 @@ extension Response {
 
     init(decoding response: PBStorage_InfoResponse) {
         self = .storage(.info(.init(response)))
+    }
+
+    init(decoding response: PBStorage_TimestampResponse) {
+        self = .storage(.timestamp(.init(response)))
     }
 
     init(decoding response: PBStorage_ListResponse) {
@@ -167,7 +180,8 @@ extension Response.System: CustomStringConvertible {
     public var description: String {
         switch self {
         case let .ping(bytes): return "ping(\(bytes.count) bytes)"
-        case let .info(key, value): return "info(\(key): \(value))"
+        case let .deviceInfo(key, value): return "deviceInfo(\(key): \(value))"
+        case let .powerInfo(key, value): return "powerInfo(\(key): \(value))"
         case let .dateTime(date): return "dateTime(\(date))"
         case let .update(update): return "update(\(update))"
         }
@@ -190,6 +204,7 @@ extension Response.Storage: CustomStringConvertible {
         case let .stat(size): return "stat(\(size))"
         case let .file(bytes): return "file(\(bytes.count) bytes)"
         case let .hash(hash): return "hash(\(hash))"
+        case let .timestamp(hash): return "timestamp(\(hash))"
         }
     }
 }

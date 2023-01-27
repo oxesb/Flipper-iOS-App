@@ -14,7 +14,7 @@ extension CardView {
         var body: some View {
             HStack(alignment: .top, spacing: 0) {
                 FileTypeView(
-                    item.fileType,
+                    item.kind,
                     isDeleted: isDeleted)
                 Spacer()
 
@@ -26,10 +26,9 @@ extension CardView {
                         .renderingMode(.template)
                         .frame(width: 24, height: 24)
                         .foregroundColor(.sYellow)
-                        .opacity(kind == .existing ? 1 : 0)
                 }
                 .padding(8)
-                .opacity(isDeleted ? 0 : 1)
+                .opacity(kind == .existing && !isEditing && !isDeleted ? 1 : 0)
 
                 VStack(spacing: 2) {
                     item.status.image

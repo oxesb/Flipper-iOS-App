@@ -2,66 +2,85 @@ import SwiftUI
 
 struct InfoView: View {
     @StateObject var viewModel: InfoViewModel
-    @Environment(\.dismiss) var dismiss
+    @StateObject var alertController: AlertController = .init()
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if viewModel.isEditing {
-                SheetEditHeader(
-                    "Editing",
-                    onSave: viewModel.saveChanges,
-                    onCancel: viewModel.undoChanges
-                )
-                .padding(.bottom, 6)
-            } else {
-                SheetHeader(viewModel.isNFC ? "Card Info" : "Key Info") {
-                    viewModel.dismiss()
-                }
-                .padding(.bottom, 6)
-            }
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    CardView(
-                        item: $viewModel.item,
-                        isEditing: $viewModel.isEditing,
-                        kind: .existing
+        ZStack {
+            VStack(alignment: .leading, spacing: 0) {
+                if viewModel.isEditing {
+                    SheetEditHeader(
+                        title: "Editing",
+                        description: viewModel.item.name.value,
+                        onSave: viewModel.saveChanges,
+                        onCancel: viewModel.undoChanges
                     )
-                    .padding(.top, 14)
-                    .padding(.horizontal, 24)
+                } else {
+                    SheetHeader(
+                        title: viewModel.item.isNFC ? "Card Info" : "Key Info",
+                        description: viewModel.item.name.value
+                    ) {
+                        viewModel.dismiss()
+                    }
+                }
 
-                    EmulateView(viewModel: .init(item: viewModel.item))
-                        .opacity(viewModel.isEditing ? 0 : 1)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        CardView(
+                            item: $viewModel.item,
+                            isEditing: $viewModel.isEditing,
+                            kind: .existing
+                        )
+                        .padding(.top, 6)
+                        .padding(.horizontal, 24)
 
-                    VStack(alignment: .leading, spacing: 20) {
-                        if viewModel.isEditableNFC {
-                            InfoButton(image: "HexEditor", title: "Edit Dump") {
-                                viewModel.showDumpEditor = true
+                        EmulateView(viewModel: .init(item: viewModel.item))
+                            .opacity(viewModel.isEditing ? 0 : 1)
+                            .environmentObject(alertController)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            if viewModel.item.isEditableNFC {
+                                InfoButton(
+                                    image: "HexEditor",
+                                    title: "Edit Dump"
+                                ) {
+                                    viewModel.showDumpEditor = true
+                                }
+                                .foregroundColor(.primary)
+                            }
+                            InfoButton(
+                                image: "Share",
+                                title: "Share"
+                            ) {
+                                viewModel.share()
                             }
                             .foregroundColor(.primary)
+                            InfoButton(
+                                image: "Delete",
+                                title: "Delete"
+                            ) {
+                                viewModel.delete()
+                            }
+                            .foregroundColor(.sRed)
                         }
-                        InfoButton(
-                            image: "Share",
-                            title: "Share",
-                            action: { viewModel.share() },
-                            longPressAction: { viewModel.shareAsFile() }
-                        )
-                        .foregroundColor(.primary)
-                        InfoButton(image: "Delete", title: "Delete") {
-                            viewModel.delete()
-                        }
-                        .foregroundColor(.sRed)
-                    }
-                    .padding(.top, 24)
-                    .padding(.horizontal, 24)
-                    .opacity(viewModel.isEditing ? 0 : 1)
+                        .padding(.top, 8)
+                        .padding(.horizontal, 24)
+                        .opacity(viewModel.isEditing ? 0 : 1)
 
-                    Spacer()
+                        Spacer()
+                    }
                 }
             }
+
+            if alertController.isPresented {
+                alertController.alert
+            }
+        }
+        .bottomSheet(isPresented: $viewModel.showShareView) {
+            ShareView(viewModel: .init(item: viewModel.item))
         }
         .fullScreenCover(isPresented: $viewModel.showDumpEditor) {
-            NFCEditorView(viewModel: .init(item: viewModel.item))
+            NFCEditorView(viewModel: .init(item: $viewModel.item))
         }
         .alert(isPresented: $viewModel.isError) {
             Alert(title: Text(viewModel.error))
@@ -71,6 +90,7 @@ struct InfoView: View {
         }
         .background(Color.background)
         .edgesIgnoringSafeArea(.bottom)
+        .environmentObject(alertController)
     }
 }
 
@@ -78,7 +98,6 @@ struct InfoButton: View {
     let image: String
     let title: String
     let action: () -> Void
-    let longPressAction: () -> Void
 
     init(
         image: String,
@@ -89,7 +108,6 @@ struct InfoButton: View {
         self.image = image
         self.title = title
         self.action = action
-        self.longPressAction = longPressAction
     }
 
     var body: some View {
@@ -101,10 +119,9 @@ struct InfoButton: View {
                 Text(title)
                     .font(.system(size: 14, weight: .medium))
             }
+            .frame(minWidth: 44, minHeight: 44)
+            .padding(.trailing, 44)
         }
-        .simultaneousGesture(LongPressGesture().onEnded { _ in
-            longPressAction()
-        })
         .simultaneousGesture(TapGesture().onEnded {
             action()
         })

@@ -3,7 +3,7 @@ import SwiftUI
 
 struct ConnectionView: View {
     @StateObject var viewModel: ConnectionViewModel
-    @Environment(\.dismiss) var dismiss
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(spacing: 0) {
@@ -69,11 +69,12 @@ struct ConnectionView: View {
             .padding(.bottom, onMac ? 140 : 8)
             .disabled(viewModel.isConnecting)
         }
-        .navigationBarTitleDisplayMode(.inline)
         .padding(.horizontal, 16)
         .background(Color.background)
+        .navigationBarBackButtonHidden(true)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
+            LeadingToolbarItems {
                 BackButton {
                     dismiss()
                 }
@@ -90,7 +91,6 @@ struct ConnectionView: View {
         .onDisappear {
             viewModel.stopScan()
         }
-        .navigationBarBackButtonHidden(true)
         .navigationBarColors(foreground: .primary, background: Color.background)
     }
 
@@ -119,10 +119,17 @@ struct ConnectionView: View {
                     ProgressView()
                         .padding(.trailing, 14)
                 default:
-                    ConnectButton("Connect") {
+                    Button {
                         if flipper.state != .connected {
                             viewModel.connect(to: flipper.id)
                         }
+                    } label: {
+                        Text("Connect")
+                            .font(.system(size: 12, weight: .bold))
+                            .roundedButtonStyle(
+                                height: 36,
+                                horizontalPadding: 16)
+                            .lineLimit(1)
                     }
                     .disabled(viewModel.isConnecting)
                     .padding(.trailing, 14)
@@ -171,30 +178,6 @@ struct ConnectPlaceholderView: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(.black40)
             Spacer()
-        }
-    }
-}
-
-// TODO: Use RoundedButton or iOS15 buttons
-
-struct ConnectButton: View {
-    let text: String
-    let action: () -> Void
-
-    init(_ text: String, action: @escaping () -> Void) {
-        self.text = text
-        self.action = action
-    }
-
-    var body: some View {
-        Button(action: action) {
-            Text(text)
-                .lineLimit(1)
-                .frame(width: 89, height: 36, alignment: .center)
-                .font(.system(size: 12, weight: .bold))
-                .background(Color.accentColor)
-                .foregroundColor(Color.white)
-                .cornerRadius(18)
         }
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import MarkdownUI
 
 extension DeviceUpdateView {
     struct UpdateProgressView: View {
@@ -8,7 +9,7 @@ extension DeviceUpdateView {
             switch viewModel.state {
             case .downloadingFirmware:
                 return "Downloading from update server..."
-            case .prepearingForUpdate:
+            case .preparingForUpdate:
                 return "Preparing for update..."
             case .uploadingFirmware:
                 return "Uploading firmware to Flipper..."
@@ -17,6 +18,10 @@ extension DeviceUpdateView {
             default:
                 return ""
             }
+        }
+
+        var changelog: Document {
+            (try? .init(markdown: viewModel.changelog)) ?? .init(blocks: [])
         }
 
         var body: some View {
@@ -43,9 +48,23 @@ extension DeviceUpdateView {
                             .font(.system(size: 18, weight: .bold))
                             .padding(.top, 24)
 
-                        Text(viewModel.changelog)
-                            .font(.system(size: 15))
+                        Markdown(changelog)
                             .padding(.vertical, 14)
+                            .markdownStyle(
+                                MarkdownStyle(
+                                    font: .system(size: 15),
+                                    measurements: .init(
+                                        headingScales: .init(
+                                            h1: 1.0,
+                                            h2: 1.0,
+                                            h3: 1.0,
+                                            h4: 1.0,
+                                            h5: 1.0,
+                                            h6: 1.0),
+                                        headingSpacing: 0.3
+                                    )
+                                )
+                            )
                     }
                     .padding(.horizontal, 14)
                 }
@@ -66,50 +85,26 @@ extension DeviceUpdateView {
             }
         }
 
-        var text: String {
-            viewModel.state == .prepearingForUpdate
+        var text: String? {
+            viewModel.state == .preparingForUpdate
                 ? "..."
-                : "\(Int(viewModel.progress * 100))%"
+                : nil
         }
 
         var color: Color {
             switch viewModel.state {
             case .downloadingFirmware: return .sGreenUpdate
-            case .prepearingForUpdate, .uploadingFirmware, .canceling: return .a2
+            case .preparingForUpdate, .uploadingFirmware, .canceling: return .a2
             default: return .clear
             }
         }
 
         var body: some View {
-            ZStack {
-                RoundedRectangle(cornerRadius: 9)
-                    .stroke(color, lineWidth: 3)
-
-                GeometryReader { reader in
-                    color.frame(width: reader.size.width * viewModel.progress)
-                }
-
-                HStack {
-                    Image(image)
-                        .padding([.leading, .top, .bottom], 9)
-
-                    Spacer()
-
-                    Text(text)
-                        .foregroundColor(.white)
-                        .font(.haxrCorpNeue(size: 40))
-                        .padding(.bottom, 4)
-
-                    Spacer()
-
-                    Image(image)
-                        .padding([.leading, .top, .bottom], 9)
-                        .opacity(0)
-                }
-            }
-            .frame(height: 46)
-            .background(color.opacity(0.54))
-            .cornerRadius(9)
+            ProgressBarView(
+                color: color,
+                image: image,
+                progress: viewModel.progress,
+                text: text)
         }
     }
 }

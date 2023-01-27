@@ -2,8 +2,6 @@ import SwiftProtobuf
 import struct Foundation.Date
 import struct Foundation.Data
 
-// swiftlint:disable function_body_length
-
 public enum Request {
     case system(System)
     case storage(Storage)
@@ -11,7 +9,8 @@ public enum Request {
     case gui(GUI)
 
     public enum System {
-        case info
+        case deviceInfo
+        case powerInfo
         case alert
         case ping([UInt8])
         case getDate
@@ -29,6 +28,7 @@ public enum Request {
         case delete(Path, isForce: Bool)
         case move(Path, Path)
         case hash(Path)
+        case timestamp(Path)
     }
 
     public enum Application {
@@ -61,9 +61,13 @@ extension Request {
 extension Request.System {
     func serialize() -> PB_Main {
         switch self {
-        case .info:
+        case .deviceInfo:
             return .with {
                 $0.systemDeviceInfoRequest = .init()
+            }
+        case .powerInfo:
+            return .with {
+                $0.systemPowerInfoRequest = .init()
             }
         case .alert:
             return .with {
@@ -159,6 +163,12 @@ extension Request.Storage {
         case let .hash(path):
             return .with {
                 $0.storageMd5SumRequest = .with {
+                    $0.path = path.string
+                }
+            }
+        case let .timestamp(path):
+            return .with {
+                $0.storageTimestampRequest = .with {
                     $0.path = path.string
                 }
             }
@@ -313,7 +323,8 @@ extension Request: CustomStringConvertible {
 extension Request.System: CustomStringConvertible {
     public var description: String {
         switch self {
-        case .info: return "info"
+        case .deviceInfo: return "deviceInfo"
+        case .powerInfo: return "powerInfo"
         case .alert: return "alert"
         case .ping(let bytes): return "ping(\(bytes.count) bytes)"
         case .getDate: return "info"
@@ -344,9 +355,12 @@ extension Request.Storage: CustomStringConvertible {
             return "move(\(from), \(to))"
         case let .hash(path):
             return "hash(\(path))"
+        case let .timestamp(path):
+            return "timestamp(\(path))"
         }
     }
 }
+
 
 extension Request.Application: CustomStringConvertible {
     public var description: String {

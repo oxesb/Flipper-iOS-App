@@ -3,10 +3,18 @@ import SwiftUI
 
 struct CategoryDeletedView: View {
     @StateObject var viewModel: CategoryDeletedViewModel
-    @Environment(\.dismiss) var dismiss
+    @Environment(\.dismiss) private var dismiss
 
-    var sheetTitle: String {
+    var restoreSheetTitle: String {
+        "All deleted keys will be restored and synced with Flipper"
+    }
+
+    var deleteSheetTitle: String {
         "All this keys will be deleted.\nThis action cannot be undone."
+    }
+
+    var toolbarActionsColor: Color {
+        viewModel.items.isEmpty ? .primary.opacity(0.5) : .primary
     }
 
     var body: some View {
@@ -26,33 +34,51 @@ struct CategoryDeletedView: View {
 
         .background(Color.background)
         .navigationBarBackButtonHidden(true)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
+            LeadingToolbarItems {
                 BackButton {
                     dismiss()
                 }
+                Title("Deleted")
             }
-            ToolbarItem(placement: .navigationBarLeading) {
-                Text("Deleted")
-                    .font(.system(size: 20, weight: .bold))
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    viewModel.showDeleteSheet = true
-                } label: {
-                    Text("Delete all")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.primary)
+            TrailingToolbarItems {
+                HStack(spacing: 8) {
+                    NavBarButton {
+                        viewModel.showRestoreSheet = true
+                    } label: {
+                        Text("Restore All")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(toolbarActionsColor)
+                    }
+                    .disabled(viewModel.items.isEmpty)
+                    .actionSheet(isPresented: $viewModel.showRestoreSheet) {
+                        .init(title: Text(restoreSheetTitle), buttons: [
+                            .destructive(Text("Restore All")) {
+                                viewModel.restoreAll()
+                            },
+                            .cancel()
+                        ])
+                    }
+
+                    NavBarButton {
+                        viewModel.showDeleteSheet = true
+                    } label: {
+                        Text("Delete All")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(toolbarActionsColor)
+                    }
+                    .disabled(viewModel.items.isEmpty)
+                    .actionSheet(isPresented: $viewModel.showDeleteSheet) {
+                        .init(title: Text(deleteSheetTitle), buttons: [
+                            .destructive(Text("Delete All")) {
+                                viewModel.deleteAll()
+                            },
+                            .cancel()
+                        ])
+                    }
                 }
             }
-        }
-        .actionSheet(isPresented: $viewModel.showDeleteSheet) {
-            .init(title: Text(sheetTitle), buttons: [
-                .destructive(Text("Delete All")) {
-                    viewModel.deleteAll()
-                },
-                .cancel()
-            ])
         }
         .sheet(isPresented: $viewModel.showInfoView) {
             DeletedInfoView(viewModel: .init(item: viewModel.selectedItem))

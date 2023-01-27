@@ -4,6 +4,7 @@ import SwiftUI
 
 struct SpeedTestView: View {
     @StateObject var viewModel: SpeedTestViewModel
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack {
@@ -36,8 +37,16 @@ struct SpeedTestView: View {
             .padding(.bottom, 50)
         }
         .padding(14)
-        .navigationTitle("Speed Test")
+        .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            LeadingToolbarItems {
+                BackButton {
+                    dismiss()
+                }
+                Title("Speed Test")
+            }
+        }
         .onDisappear {
             viewModel.stop()
         }

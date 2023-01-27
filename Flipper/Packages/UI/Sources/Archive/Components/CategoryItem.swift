@@ -11,7 +11,7 @@ struct CategoryItem: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 0) {
-                FileTypeView(item.fileType, isDeleted: isDeleted)
+                FileTypeView(item.kind, isDeleted: isDeleted)
                 Text(item.info)
                     .padding(.top, 14)
                     .padding(.leading, 14)
@@ -48,12 +48,12 @@ struct CategoryItem: View {
 
 fileprivate extension ArchiveItem {
     var info: String {
-        switch fileType {
-        case .subghz: return self["Protocol"] ?? ""
-        case .rfid: return self["Key type"] ?? ""
-        case .nfc: return self["Device type"] ?? ""
-        case .infrared: return self["protocol"] ?? ""
-        case .ibutton: return self["Key type"] ?? ""
+        switch kind {
+        case .subghz: return properties["Protocol"] ?? ""
+        case .rfid: return properties["Key type"] ?? ""
+        case .nfc: return properties["Device type"] ?? ""
+        case .infrared: return properties["protocol"] ?? ""
+        case .ibutton: return properties["Key type"] ?? ""
         }
     }
 }

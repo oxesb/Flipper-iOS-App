@@ -10,6 +10,10 @@ extension ArchiveItem {
     public var content: String {
         properties.content
     }
+
+    public var shadowContent: String {
+        shadowCopy.content
+    }
 }
 
 extension Array where Element == ArchiveItem.Property {
@@ -26,7 +30,9 @@ extension Array where Element == ArchiveItem.Property {
         var comments: [String] = []
         var properties: [ArchiveItem.Property] = []
 
-        for line in content.split(separator: "\n") {
+        let lines = content.split { $0 == "\n" || $0 == "\r\n" }
+
+        for line in lines {
             guard !line.starts(with: "#") else {
                 let comment = line.dropFirst()
                 comments.append(comment.trimmingCharacters(in: .whitespaces))

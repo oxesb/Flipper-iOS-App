@@ -1,4 +1,5 @@
 import Core
+import Inject
 import Combine
 import Dispatch
 import Logging
@@ -7,16 +8,19 @@ import Logging
 class CategoryDeletedViewModel: ObservableObject {
     private let logger = Logger(label: "category-deleted-vm")
 
+    @Inject private var archive: Archive
+
     @Published var items: [ArchiveItem] = []
-    var selectedItem: ArchiveItem?
+    var selectedItem: ArchiveItem = .none
     @Published var showInfoView = false
+    @Published var showRestoreSheet = false
     @Published var showDeleteSheet = false
 
-    let appState: AppState = .shared
+    @Inject private var appState: AppState
     var disposeBag = DisposeBag()
 
     init() {
-        appState.archive.$deletedItems
+        archive.deletedItems
             .receive(on: DispatchQueue.main)
             .assign(to: \.items, on: self)
             .store(in: &disposeBag)
@@ -27,10 +31,21 @@ class CategoryDeletedViewModel: ObservableObject {
         showInfoView = true
     }
 
+    func restoreAll() {
+        Task {
+            do {
+                try await archive.restoreAll()
+                try await appState.synchronize()
+            } catch {
+                logger.error("restore all: \(error)")
+            }
+        }
+    }
+
     func deleteAll() {
         Task {
             do {
-                try await appState.archive.wipeAll()
+                try await archive.wipeAll()
             } catch {
                 logger.error("delete all: \(error)")
             }
